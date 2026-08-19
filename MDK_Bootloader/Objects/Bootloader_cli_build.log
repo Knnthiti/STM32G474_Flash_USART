@@ -1,0 +1,7 @@
+*** Using Compiler 'V6.24', folder: 'C:\Users\Knnn\AppData\Local\Keil_v5\ARM\ARMCLANG\Bin'
+Build target 'STM32G474RE'
+compiling Bootloader.c...
+linking...
+Program Size: Code=11396 RO-data=568 RW-data=8 ZI-data=7824  
+".\Objects\Bootloader.axf" - 0 Error(s), 0 Warning(s).
+Build Time Elapsed:  00:00:00

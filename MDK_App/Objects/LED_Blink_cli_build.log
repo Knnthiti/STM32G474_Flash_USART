@@ -1,0 +1,9 @@
+*** Using Compiler 'V6.24', folder: 'C:\Users\Knnn\AppData\Local\Keil_v5\ARM\ARMCLANG\Bin'
+Build target 'STM32G474RE'
+compiling LED_Blink.c...
+compiling Clock_system.c...
+linking...
+Program Size: Code=3290 RO-data=522 RW-data=4 ZI-data=1644  
+After Build - User command #1: fromelf.exe --bin --output ..\Flash_program\App.bin .\Objects\LED_Blink.axf
+".\Objects\LED_Blink.axf" - 0 Error(s), 0 Warning(s).
+Build Time Elapsed:  00:00:01
