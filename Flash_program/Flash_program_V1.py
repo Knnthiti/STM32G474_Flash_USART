@@ -4,6 +4,7 @@ import struct
 import threading
 import time
 from pathlib import Path
+from typing import Optional
 import tkinter as tk
 from tkinter import filedialog, messagebox, scrolledtext
 from tkinter import ttk
@@ -26,13 +27,20 @@ PC_CMD_WAIT = 0x21  # Command sent when STM32 buffer is full to trigger flash wr
 STM_ACK_READY = 0x4A  # STM32 is ready to receive next packet
 STM_ACK_PAUSE = 0x6A  # STM32 buffer is full, pause transmission
 STM_ACK_FINISHED = 0x56  # STM32 successfully finished flashing
+KNOWN_STM_ACKS = (STM_ACK_READY, STM_ACK_PAUSE, STM_ACK_FINISHED)
 
 # Protocol configurations
 FIRMWARE_VERSION = 0x67
 PAYLOAD_SIZE = 1016
 PACKET_SIZE = 1024
+ERASED_FLASH_BYTE = 0xFF
 DEFAULT_BAUDRATE = 115200
 DEFAULT_FIRMWARE_FILE = Path(__file__).with_name("App.bin")
+ACK_POLL_INTERVAL_SECONDS = 0.01
+START_ACK_RETRIES = 6000
+PACKET_ACK_RETRIES = 1000
+FLASH_WRITE_ACK_RETRIES = 6000
+FINISH_ACK_RETRIES = 6000
 
 
 class FirmwareUpdateCancelled(Exception):
@@ -58,13 +66,29 @@ def software_crc32_c_style(data: bytes) -> int:
 # ---------------------------------------------------------
 # Packet Builder Helper (Includes Version Variable)
 # ---------------------------------------------------------
-def build_packet(command, payload_bytes=b""):
+def build_packet(command, payload_bytes=b"", pad_byte=0x00):
     """Construct a 1024-byte packet: Header(4) + Data(1016) + CRC(4)."""
+    if len(payload_bytes) > PAYLOAD_SIZE:
+        raise ValueError("Payload is larger than one STM32 packet.")
+    if not 0 <= pad_byte <= 0xFF:
+        raise ValueError("pad_byte must be in range 0..255.")
+
     header = struct.pack("<B B H", command, FIRMWARE_VERSION, PACKET_SIZE)
-    padded_payload = payload_bytes.ljust(PAYLOAD_SIZE, b"\x00")
+    padded_payload = payload_bytes.ljust(PAYLOAD_SIZE, bytes([pad_byte]))
     data_to_crc = header + padded_payload
     my_crc = software_crc32_c_style(data_to_crc)
     return data_to_crc + struct.pack("<I", my_crc)
+
+
+def find_valid_packet_start(buffer: bytes) -> Optional[int]:
+    max_start = len(buffer) - PACKET_SIZE
+    for start in range(max_start + 1):
+        if buffer[start] not in KNOWN_STM_ACKS:
+            continue
+        if buffer[start + 2] != 0x00 or buffer[start + 3] != 0x04:
+            continue
+        return start
+    return None
 
 
 # ---------------------------------------------------------
@@ -79,27 +103,101 @@ def wait_for_stm32(
 ):
     """Wait for expected ACKs from STM32, reading 1024-byte CDC packets."""
     retries = 0
+    rx_buffer = bytearray()
+
     while retries < timeout_retries:
         if cancel_event is not None and cancel_event.is_set():
             raise FirmwareUpdateCancelled()
 
-        if ser.in_waiting >= PACKET_SIZE:
-            bytes_to_read = (ser.in_waiting // PACKET_SIZE) * PACKET_SIZE
-            rx_data = ser.read(bytes_to_read)
+        waiting = ser.in_waiting
+        if waiting > 0:
+            rx_buffer.extend(ser.read(waiting))
 
-            last_packet = rx_data[-PACKET_SIZE:]
-            ack_cmd = last_packet[0]
+            while len(rx_buffer) >= PACKET_SIZE:
+                packet_start = find_valid_packet_start(rx_buffer)
+                if packet_start is None:
+                    if len(rx_buffer) > PACKET_SIZE:
+                        dropped = len(rx_buffer) - (PACKET_SIZE - 1)
+                        del rx_buffer[:dropped]
+                        if log_callback is not None:
+                            log_callback(
+                                f"[!] Dropped {dropped} byte(s) while searching for ACK frame"
+                            )
+                    break
 
-            if ack_cmd in expected_acks:
-                return ack_cmd
+                if packet_start > 0:
+                    del rx_buffer[:packet_start]
+                    if log_callback is not None:
+                        log_callback(
+                            f"[!] Ignored {packet_start} byte(s) before ACK frame"
+                        )
 
-            if log_callback is not None:
-                log_callback(f"[!] Unexpected ACK or garbage received: 0x{ack_cmd:02X}")
+                packet = bytes(rx_buffer[:PACKET_SIZE])
+                del rx_buffer[:PACKET_SIZE]
+                ack_cmd = packet[0]
 
-        time.sleep(0.01)
+                if ack_cmd in expected_acks:
+                    return ack_cmd
+
+                if log_callback is not None:
+                    log_callback(f"[!] Unexpected ACK received: 0x{ack_cmd:02X}")
+
+        time.sleep(ACK_POLL_INTERVAL_SECONDS)
         retries += 1
 
     return None
+
+
+def send_packet(ser, packet: bytes):
+    ser.write(packet)
+    ser.flush()
+
+
+def wait_until_stm32_ready(
+    ser,
+    timeout_retries=PACKET_ACK_RETRIES,
+    cancel_event=None,
+    log_callback=None,
+    status_callback=None,
+    pause_status="STM32 is writing flash",
+    pause_log=None,
+    timeout_message="Timeout while waiting for STM32 READY.",
+):
+    ack = wait_for_stm32(
+        ser,
+        [STM_ACK_READY, STM_ACK_PAUSE],
+        timeout_retries=timeout_retries,
+        cancel_event=cancel_event,
+        log_callback=log_callback,
+    )
+
+    if ack == STM_ACK_PAUSE:
+        _status(status_callback, pause_status)
+        if pause_log is None:
+            pause_log = (
+                f"STM32 buffer is full (0x{STM_ACK_PAUSE:02X}), "
+                f"sending WAIT (0x{PC_CMD_WAIT:02X})"
+            )
+        _log(log_callback, pause_log)
+        send_packet(ser, build_packet(PC_CMD_WAIT))
+
+        ack = wait_for_stm32(
+            ser,
+            [STM_ACK_READY],
+            timeout_retries=FLASH_WRITE_ACK_RETRIES,
+            cancel_event=cancel_event,
+            log_callback=log_callback,
+        )
+
+        if ack != STM_ACK_READY:
+            raise TimeoutError(timeout_message)
+
+        _log(log_callback, f"Received READY (0x{STM_ACK_READY:02X}) after WAIT")
+
+    if ack != STM_ACK_READY:
+        raise TimeoutError(timeout_message)
+
+    return ack
 
 
 def flash_firmware(
@@ -136,7 +234,7 @@ def flash_firmware(
     if cancel_event is not None and cancel_event.is_set():
         raise FirmwareUpdateCancelled()
 
-    ser = serial.Serial(port, baudrate, timeout=1)
+    ser = serial.Serial(port, baudrate, timeout=0.1, write_timeout=5)
     try:
         ser.reset_input_buffer()
         ser.reset_output_buffer()
@@ -148,51 +246,38 @@ def flash_firmware(
             log_callback,
             f"Sending START (0x{PC_CMD_START:02X}), firmware version 0x{FIRMWARE_VERSION:02X}",
         )
-        ser.write(build_packet(PC_CMD_START, struct.pack("<I", total_size)))
+        send_packet(ser, build_packet(PC_CMD_START, struct.pack("<I", total_size)))
 
         for chunk_index in range(total_chunks):
             if cancel_event is not None and cancel_event.is_set():
                 raise FirmwareUpdateCancelled()
 
-            ack = wait_for_stm32(
+            wait_until_stm32_ready(
                 ser,
-                [STM_ACK_READY, STM_ACK_PAUSE],
-                timeout_retries=6000 if chunk_index == 0 else 1000,
+                timeout_retries=START_ACK_RETRIES
+                if chunk_index == 0
+                else PACKET_ACK_RETRIES,
                 cancel_event=cancel_event,
                 log_callback=log_callback,
+                status_callback=status_callback,
+                pause_status="STM32 is writing flash",
+                pause_log=(
+                    f"STM32 buffer is full (0x{STM_ACK_PAUSE:02X}), "
+                    f"sending WAIT (0x{PC_CMD_WAIT:02X})"
+                ),
+                timeout_message=f"Timeout at packet {chunk_index + 1}/{total_chunks}.",
             )
-
-            if ack == STM_ACK_PAUSE:
-                _status(status_callback, "STM32 is writing flash")
-                _log(
-                    log_callback,
-                    f"STM32 buffer is full (0x{STM_ACK_PAUSE:02X}), sending WAIT (0x{PC_CMD_WAIT:02X})",
-                )
-                ser.write(build_packet(PC_CMD_WAIT))
-
-                ack = wait_for_stm32(
-                    ser,
-                    [STM_ACK_READY],
-                    timeout_retries=50,
-                    cancel_event=cancel_event,
-                    log_callback=log_callback,
-                )
-                if ack != STM_ACK_READY:
-                    raise TimeoutError("Timeout while waiting for STM32 flash write.")
-
-                _log(log_callback, f"STM32 is ready again (0x{STM_ACK_READY:02X})")
-
-            if ack != STM_ACK_READY:
-                raise TimeoutError(
-                    f"Timeout at packet {chunk_index + 1}/{total_chunks}."
-                )
 
             start_idx = chunk_index * PAYLOAD_SIZE
             end_idx = min(start_idx + PAYLOAD_SIZE, total_size)
             chunk_data = firmware_data[start_idx:end_idx]
-            packet = build_packet(PC_CMD_SENDING, chunk_data)
+            packet = build_packet(
+                PC_CMD_SENDING,
+                chunk_data,
+                pad_byte=ERASED_FLASH_BYTE,
+            )
 
-            ser.write(packet)
+            send_packet(ser, packet)
             _status(
                 status_callback,
                 f"Sending packet {chunk_index + 1}/{total_chunks}",
@@ -203,44 +288,35 @@ def flash_firmware(
             )
             _progress(progress_callback, chunk_index + 1, total_chunks)
 
-        _status(status_callback, "Waiting to finish")
+        _status(status_callback, "Waiting for final READY")
         _log(
             log_callback,
-            f"Transfer completed. Waiting for READY before FINISHED (0x{PC_CMD_FINISHED:02X})",
+            "No firmware data remains. Waiting for READY before FINISHED "
+            f"(0x{PC_CMD_FINISHED:02X})",
         )
-        ack = wait_for_stm32(
+        wait_until_stm32_ready(
             ser,
-            [STM_ACK_READY, STM_ACK_PAUSE],
-            timeout_retries=30,
+            timeout_retries=PACKET_ACK_RETRIES,
             cancel_event=cancel_event,
             log_callback=log_callback,
+            status_callback=status_callback,
+            pause_status="STM32 is writing final flash block",
+            pause_log=(
+                f"STM32 buffer is full (0x{STM_ACK_PAUSE:02X}), "
+                f"sending final WAIT (0x{PC_CMD_WAIT:02X})"
+            ),
+            timeout_message="STM32 is not ready to accept FINISHED command.",
         )
-        if ack == STM_ACK_PAUSE:
-            _status(status_callback, "STM32 is writing final flash block")
-            _log(
-                log_callback,
-                f"STM32 buffer is full (0x{STM_ACK_PAUSE:02X}), sending final WAIT (0x{PC_CMD_WAIT:02X})",
-            )
-            ser.write(build_packet(PC_CMD_WAIT))
-            ack = wait_for_stm32(
-                ser,
-                [STM_ACK_READY],
-                timeout_retries=50,
-                cancel_event=cancel_event,
-                log_callback=log_callback,
-            )
 
-        if ack != STM_ACK_READY:
-            raise TimeoutError("STM32 is not ready to accept FINISHED command.")
-
-        ser.write(build_packet(PC_CMD_FINISHED))
+        _log(log_callback, f"Sending FINISHED (0x{PC_CMD_FINISHED:02X})")
+        send_packet(ser, build_packet(PC_CMD_FINISHED))
         _status(status_callback, "Waiting for final confirmation")
         _log(log_callback, f"Waiting for final success ACK (0x{STM_ACK_FINISHED:02X})")
 
         ack_finish = wait_for_stm32(
             ser,
             [STM_ACK_FINISHED],
-            timeout_retries=100,
+            timeout_retries=FINISH_ACK_RETRIES,
             cancel_event=cancel_event,
             log_callback=log_callback,
         )
