@@ -1,97 +1,74 @@
 #include "Bootloader.h"
 
-#define FLASH_PAGE_SIZE_BYTES          0x800U
-#define FLASH_BANK_PAGE_COUNT          128U
-#define FLASH_PAGE_COUNT               256U
-#define FLASH_APP_END_ADDRESS          0x08080000U
-#define BOOTLOADER_PACKET_DATA_WORDS   254U
 
-#define FLASH_ERROR_FLAGS (FLASH_SR_FASTERR | FLASH_SR_MISERR  | FLASH_SR_PGSERR | \
-                           FLASH_SR_SIZERR  | FLASH_SR_PGAERR  | FLASH_SR_WRPERR | \
-                           FLASH_SR_PROGERR | FLASH_SR_OPERR   | FLASH_SR_RDERR  | \
-                           FLASH_SR_OPTVERR)
-
-static uint32_t g4_appImageSize = 0;
-
+/* Jump from bootloader context to the application reset handler. */
 void bootJumpToApp1(){ 
 	
-	typedef void (*pFunction)(void);
+	// Define a function pointer type for the application reset handler.
+	typedef int (*pFunction)(void);
 	static pFunction vJumpToApp;
 	
-	__disable_irq();
-	
-	SysTick->CTRL = 0U;
-	SysTick->LOAD = 0U;
-	SysTick->VAL = 0U;
-	
-	for(uint32_t i = 0U ; i < 8U ; i++){
-		NVIC->ICER[i] = 0xFFFFFFFFU;
-		NVIC->ICPR[i] = 0xFFFFFFFFU;
-	}
-	
+	// Read the reset handler address from the application vector table.
 	vJumpToApp	= (pFunction)(*(__IO uint32_t*)(FLASH_START_APP1 + 4));
-	SCB->VTOR = FLASH_START_APP1;
+
+	// Load the application stack pointer before jumping to application code.
 	__set_MSP(*(__IO uint32_t*)FLASH_START_APP1);
 	
-	__enable_irq();
+	// Disable interrupts so bootloader interrupts do not run inside the application.
+	__disable_irq();
+	
+	// Branch to the application reset handler.
 	vJumpToApp();
 }
 
 uint32_t u32CrcCalculateLength;
 
+/* Configure CRC peripheral and DMA channel 1 for memory-to-CRC transfers. */
 void CRC_DmaInit(uint32_t u32MemAddr, uint32_t u32memLength) {
     
-    /* 1. ???? Clock ????????????????????? */ 
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_CRC);
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMA1);
     LL_AHB1_GRP1_EnableClock(LL_AHB1_GRP1_PERIPH_DMAMUX1); 
 
-    /* 2. ??????? CRC Hardware */
     LL_CRC_ResetCRCCalculationUnit(CRC);
     LL_CRC_SetPolynomialSize(CRC, LL_CRC_POLYLENGTH_32B);
     LL_CRC_SetInputDataReverseMode(CRC, LL_CRC_INDATA_REVERSE_NONE);
     LL_CRC_SetOutputDataReverseMode(CRC, LL_CRC_OUTDATA_REVERSE_NONE);
     LL_CRC_SetInitialData(CRC, 0xFFFFFFFF);
-    LL_CRC_SetPolynomialCoef(CRC, 0x04C11DB7); // ????????????????????????????????????????? CRC32
-    
-    /* 3. ??? DMA ??????????????????????????? */
+    LL_CRC_SetPolynomialCoef(CRC, 0x04C11DB7);
+
     LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
 
-    /* 4. ?????????????? DMA */
     LL_DMA_SetDataTransferDirection(DMA1, LL_DMA_CHANNEL_1, LL_DMA_DIRECTION_MEMORY_TO_MEMORY);
     LL_DMA_SetChannelPriorityLevel(DMA1, LL_DMA_CHANNEL_1, LL_DMA_PRIORITY_HIGH);
     LL_DMA_SetMode(DMA1, LL_DMA_CHANNEL_1, LL_DMA_MODE_NORMAL);
     
-    LL_DMA_SetPeriphIncMode(DMA1, LL_DMA_CHANNEL_1, LL_DMA_PERIPH_INCREMENT); // ???? RAM ????????? Address
-    LL_DMA_SetMemoryIncMode(DMA1, LL_DMA_CHANNEL_1, LL_DMA_MEMORY_NOINCREMENT); // ???? CRC Register ?????????????
+    LL_DMA_SetPeriphIncMode(DMA1, LL_DMA_CHANNEL_1, LL_DMA_PERIPH_INCREMENT);
+    LL_DMA_SetMemoryIncMode(DMA1, LL_DMA_CHANNEL_1, LL_DMA_MEMORY_NOINCREMENT);
     
     LL_DMA_SetPeriphSize(DMA1, LL_DMA_CHANNEL_1, LL_DMA_PDATAALIGN_WORD);
     LL_DMA_SetMemorySize(DMA1, LL_DMA_CHANNEL_1, LL_DMA_MDATAALIGN_WORD);
-    
-    /* 5. ???? Address ??? Length ?????????????????????? */
+
     LL_DMA_ConfigAddresses(DMA1, LL_DMA_CHANNEL_1, 
                            u32MemAddr,             // Source: RAM
                            (uint32_t)&(CRC->DR),   // Destination: Hardware CRC
                            LL_DMA_DIRECTION_MEMORY_TO_MEMORY);
     
     LL_DMA_SetDataLength(DMA1, LL_DMA_CHANNEL_1, u32memLength);
- 
-    /* 6. ????????????????????????????? */
+
     LL_DMA_ClearFlag_TC1(DMA1);
 
-    /* 7. ??????? DMA ?????????! (???????) */
     LL_DMA_EnableChannel(DMA1, LL_DMA_CHANNEL_1);
 
-    /* 8. ?????????? DMA ????????????????? (Polling) */
     while(LL_DMA_IsActiveFlag_TC1(DMA1) == 0) {
-        // ???????????...
+
     }
 
-    /* 9. ??????????????? DMA */
     LL_DMA_ClearFlag_TC1(DMA1);
     LL_DMA_DisableChannel(DMA1, LL_DMA_CHANNEL_1);
 }
 
+/* Software CRC32 implementation matching the STM32 CRC peripheral settings. */
 uint32_t software_crc32(uint32_t *data, uint16_t length) {
     uint32_t crc = 0xFFFFFFFF;
 
@@ -114,34 +91,41 @@ volatile uint32_t My_CRC = 0;
 volatile uint32_t My_CRC_SW = 0;
 volatile uint32_t Received_CRC = 67;
 
+/* Calculate CRC for the received packet body and load the packet CRC field. */
 void CRC_APP_RX_DATA(uint32_t *buffer, uint32_t len) {
     My_CRC_SW = software_crc32(buffer, (uint16_t)len);
     My_CRC = My_CRC_SW;
     Received_CRC = RX_USART_Data.u32CRC4Byte; 
 }
 
+/* Return 1 while flash is busy, otherwise return 0. */
 uint8_t IsFlash_WaitForOperation(void){
 	return((FLASH->SR & FLASH_SR_BSY) ? 1 : 0);
 }
 
+/* Clear end-of-operation and all tracked flash error flags. */
 void Clear_errorflags(void){
 	FLASH->SR = (FLASH_SR_EOP | FLASH_ERROR_FLAGS);
 }
 
+/* Unlock flash control registers before erase/program operations. */
 void Flash_Unlock(void){
   FLASH->KEYR = 0x45670123;
   FLASH->KEYR = 0xCDEF89AB;
 }
 
+/* Lock flash control registers after protected flash access is no longer needed. */
 void Flash_lock(void){
   FLASH->CR |= FLASH_CR_LOCK;
 }
 
+/* Return 1 when flash control registers are locked. */
 uint8_t IsFlash_lock(void){
 	return(FLASH->CR & FLASH_CR_LOCK) ? 1 : 0;
 }
 
 
+/* Erase one flash page, selecting bank 1 or bank 2 from the absolute page number. */
 uint8_t B1_Flash_erase_Page(uint8_t Page){
 	uint32_t pageInBank = Page;
 	
@@ -193,15 +177,12 @@ uint8_t B1_Flash_erase_Page(uint8_t Page){
 	return 0;
 }
 
+/* Erase the complete application flash area before receiving a new image. */
 uint8_t B1_Erase_All_App(void){
 	uint16_t startPage = (uint16_t)((FLASH_START_APP1 - FLASH_BASE) / FLASH_PAGE_SIZE_BYTES);
 	uint32_t eraseBytes = FLASH_APP_END_ADDRESS - FLASH_START_APP1;
 	uint16_t erasePages;
 	uint16_t endPage;
-	
-	if((g4_appImageSize != 0U) && (g4_appImageSize <= eraseBytes)){
-		eraseBytes = ((g4_appImageSize + 1015U) / 1016U) * 1016U;
-	}
 	
 	erasePages = (uint16_t)((eraseBytes + FLASH_PAGE_SIZE_BYTES - 1U) / FLASH_PAGE_SIZE_BYTES);
 	endPage = startPage + erasePages;
@@ -221,6 +202,7 @@ uint8_t B1_Erase_All_App(void){
 
 BufferFlash _32byteBufferFlash;
 
+/* Program the staged words into flash using STM32 double-word programming. */
 uint8_t B1_Flash_Write(uint32_t u32FlashAddress, uint32_t *u32Data32B, uint16_t u16DataCount){
 	uint32_t programBytes;
 	uint32_t endAddress;
@@ -233,7 +215,7 @@ uint8_t B1_Flash_Write(uint32_t u32FlashAddress, uint32_t *u32Data32B, uint16_t 
 		return 1;
 	}
 	
-	programBytes = (((uint32_t)u16DataCount + 1U) & ~1UL) * sizeof(uint32_t);
+	programBytes = (((uint32_t)u16DataCount + 1U) & ~1UL) * 4;
 	endAddress = u32FlashAddress + programBytes;
 	
 	if((endAddress < u32FlashAddress) || (endAddress > FLASH_APP_END_ADDRESS)){
@@ -258,8 +240,8 @@ uint8_t B1_Flash_Write(uint32_t u32FlashAddress, uint32_t *u32Data32B, uint16_t 
 	
 	for(uint16_t i = 0U ; i < u16DataCount ; i += 2U){
 		uint32_t word0 = u32Data32B[i];
-		uint32_t word1 = ((i + 1U) < u16DataCount) ? u32Data32B[i + 1U] : 0xFFFFFFFFU;
-		uint32_t writeAddress = u32FlashAddress + ((uint32_t)i * sizeof(uint32_t));
+		uint32_t word1 = u32Data32B[i + 1U];
+		uint32_t writeAddress = u32FlashAddress + ((uint32_t)i * 4);
 		
 		//3.Set SER1 for choose Write mode.
 		FLASH->CR |= FLASH_CR_PG;
@@ -286,7 +268,8 @@ uint8_t B1_Flash_Write(uint32_t u32FlashAddress, uint32_t *u32Data32B, uint16_t 
 	return 0;
 }
 
-uint32_t u32BufferProgram[size_u32BufferProgram];
+/* Packet staging buffer and global RX/TX protocol frames. */
+uint32_t __attribute__((aligned(4))) u32BufferProgram[size_u32BufferProgram] ={0};
 
 volatile _USARTData TX_USART_Data;
 volatile _USARTData RX_USART_Data;
@@ -301,14 +284,14 @@ volatile uint16_t g4_rxIndex = 0;
 volatile uint16_t g4_txIndex = 0;
 volatile G4_State_t g4_currentState = G4_STATE_INIT_RX;
 
-static void Bootloader_ClearProgramBuffer(void)
+/* Reset the whole staging buffer to the erased-flash value. */
+void Bootloader_ClearProgramBuffer(void)
 {
-    for(uint16_t i = 0U ; i < size_u32BufferProgram ; i++){
-        u32BufferProgram[i] = 0xFFFFFFFFU;
-    }
+	memset(u32BufferProgram, 0xFFFFFFFF, size_u32BufferProgram);
 }
 
-static void Bootloader_PrepareAck(STM_ACK_t ack)
+/* Build a 1024-byte ACK frame header for the PC-side flasher. */
+void Bootloader_PrepareAck(STM_ACK_t ack)
 {
     TX_USART_Data = (_USARTData){ 0 };
     TX_USART_Data.u8setting1Byte.u8herder = (uint8_t)ack;
@@ -316,7 +299,8 @@ static void Bootloader_PrepareAck(STM_ACK_t ack)
     TX_USART_Data.u8setting1Byte.u16size = size_u8USARTdata;
 }
 
-static uint8_t Bootloader_FlushProgramBuffer(void)
+/* Write any staged data packet words to flash and advance the app offset. */
+uint8_t Bootloader_FlashProgramBuffer(void)
 {
     uint32_t flashAddress;
     uint32_t byteCount;
@@ -326,7 +310,7 @@ static uint8_t Bootloader_FlushProgramBuffer(void)
     }
 	
     flashAddress = FLASH_START_APP1 + u32offset_FlashAddress;
-    byteCount = (uint32_t)current_program * sizeof(uint32_t);
+    byteCount = (uint32_t)current_program * 4;
 	
     if(B1_Flash_Write(flashAddress, u32BufferProgram, current_program) != 0U){
         return 1;
@@ -350,8 +334,8 @@ void PocessCommand_G4(void)
     switch (RX_USART_Data.u8setting1Byte.u8herder)
     {
         case PC_CMD_START_PRI: // 0x08
-            g4_appImageSize = RX_USART_Data.u32Data[1];
-            
+            /* Start a new firmware update: erase app area and reset write offsets. */
+			
             __disable_irq();
             status = B1_Erase_All_App(); // Erase application flash area
             __enable_irq(); 
@@ -363,34 +347,37 @@ void PocessCommand_G4(void)
             
             if(status == 0U){
                 Bootloader_PrepareAck(STM_ACK_READY_PRI); // 0x4A
-                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u32USARTdata);
+                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u8USARTdata);
             }
             break;
 
         case PC_CMD_SENDING_PRI: // 0x68
+            /* Let the PC continue until the RAM staging buffer is full. */
             if (current_program < size_u32BufferProgram) {
                 Bootloader_PrepareAck(STM_ACK_READY_PRI); // 0x4A
-                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u32USARTdata);
+                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u8USARTdata);
             } else {
                 Bootloader_PrepareAck(STM_ACK_PAUSE_PRI); // 0x6A
-                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u32USARTdata);
+                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u8USARTdata);
             }
             break;
 
         case PC_CMD_WAIT_PRI: // 0x21
+            /* PC paused transmission; commit the current staging buffer to flash. */
             __disable_irq();
-            status = Bootloader_FlushProgramBuffer();
+            status = Bootloader_FlashProgramBuffer();
             __enable_irq();
             
             if(status == 0U){
                 Bootloader_PrepareAck(STM_ACK_READY_PRI); // 0x4A
-                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u32USARTdata);
+                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u8USARTdata);
             }
             break;
 
         case PC_CMD_FINISHED_PRI: // 0x9A
+            /* No more packets are coming; flush remaining data and report success. */
             __disable_irq();
-            status = Bootloader_FlushProgramBuffer();
+            status = Bootloader_FlashProgramBuffer();
             __enable_irq();
             
             if(status == 0U){
@@ -399,7 +386,7 @@ void PocessCommand_G4(void)
                 u32offset_FlashAddress = 0; 
                 Bootloader_ClearProgramBuffer();
                 Bootloader_PrepareAck(STM_ACK_FINISHED_PRI); // 0x56
-                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u32USARTdata);
+                Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u8USARTdata);
             }
             break;
 
@@ -412,9 +399,10 @@ void PocessCommand_G4(void)
 // 3. Bootloader State Machine Function
 // ==========================================
 // Command LPUART1 to Send Data via DMA (Uses Channel 4)
+/* Start a DMA transfer that sends one complete ACK frame through LPUART1. */
 void Send_Data_LPUART1_DMA(uint32_t *buffer, uint32_t len) 
 {
-    uint32_t byteLength = len * sizeof(uint32_t);
+    uint32_t byteLength = len;
 	
     // 1. Stop DMA channel before making any changes
     LL_LPUART_DisableDMAReq_TX(LPUART1);
@@ -445,10 +433,9 @@ void Send_Data_LPUART1_DMA(uint32_t *buffer, uint32_t len)
 }
 
 // Command LPUART1 to Receive Data via DMA (Uses Channel 5)
+/* Arm DMA reception for one complete 1024-byte packet from the PC. */
 void Receive_Data_LPUART1_DMA(uint32_t *buffer, uint32_t len) 
 {
-    uint32_t byteLength = len * sizeof(uint32_t);
-	
     // 1. Stop DMA channel before making any changes
     LL_LPUART_DisableDMAReq_RX(LPUART1);
     LL_DMA_DisableChannel(DMA1, LPUART1_RX_DMA_CHANNEL);
@@ -462,22 +449,23 @@ void Receive_Data_LPUART1_DMA(uint32_t *buffer, uint32_t len)
     LL_DMA_SetPeriphAddress(DMA1, LPUART1_RX_DMA_CHANNEL, LL_LPUART_DMA_GetRegAddr(LPUART1, LL_LPUART_DMA_REG_DATA_RECEIVE));
     
     // 4. Set how many bytes we want to receive
-    LL_DMA_SetDataLength(DMA1, LPUART1_RX_DMA_CHANNEL, byteLength);
+    LL_DMA_SetDataLength(DMA1, LPUART1_RX_DMA_CHANNEL, len);
     
     // 5. Clear Transfer Complete and Error flags for Channel 5 BEFORE enabling
     LL_DMA_ClearFlag_TC5(DMA1); 
     LL_DMA_ClearFlag_TE5(DMA1);
     LL_LPUART_ClearFlag_IDLE(LPUART1);
     g4_rxIndex = 0U;
+	
+	 // 7. Start DMA and put it in standby mode to wait for data
+    LL_DMA_EnableChannel(DMA1, LPUART1_RX_DMA_CHANNEL);
     
     // 6. Enable DMA request in LPUART1 peripheral
     LL_LPUART_EnableIT_IDLE(LPUART1);
     LL_LPUART_EnableDMAReq_RX(LPUART1);
-    
-    // 7. Start DMA and put it in standby mode to wait for data
-    LL_DMA_EnableChannel(DMA1, LPUART1_RX_DMA_CHANNEL);
 }
 
+/* Polling state machine that receives, validates, processes, and ACKs packets. */
 void UART_ProcessState_G4(void) 
 {
     switch (g4_currentState) {
@@ -486,7 +474,7 @@ void UART_ProcessState_G4(void)
             // Command DMA to wait for incoming data
             RX_USART_Data = (_USARTData){ 0 };
             TX_USART_Data = (_USARTData){ 0 };
-            Receive_Data_LPUART1_DMA((uint32_t*)RX_USART_Data.u32Data, size_u32USARTdata);
+            Receive_Data_LPUART1_DMA((uint32_t*)RX_USART_Data.u8Data, size_u8USARTdata);
             timeoutStart = GetTick();
             g4_currentState = G4_STATE_WAIT_RX;
             break;
@@ -507,7 +495,7 @@ void UART_ProcessState_G4(void)
             // 1. Calculate CRC
             CRC_APP_RX_DATA((uint32_t*)RX_USART_Data.u32Data, size_u32USARTdata - 1U);
 			
-            if((My_CRC_SW != Received_CRC) || 
+            if((My_CRC != Received_CRC) || 
                (RX_USART_Data.u8setting1Byte.u16size != size_u8USARTdata)){
                 g4_currentState = G4_STATE_INIT_RX;
                 break;
@@ -571,6 +559,7 @@ void UART_ProcessState_G4(void)
 
 void LPUART1_IRQHandler(void)
 {
+    /* IDLE interrupt extends the receive timeout while an incomplete frame is arriving. */
     if((LL_LPUART_IsActiveFlag_IDLE(LPUART1) != 0U) &&
        (LL_LPUART_IsEnabledIT_IDLE(LPUART1) != 0U)){
         uint32_t remaining;
@@ -590,6 +579,7 @@ void LPUART1_IRQHandler(void)
         }
     }
 	
+    /* Any UART receive error forces the DMA/USART state machine to restart cleanly. */
     if((LL_LPUART_IsEnabledIT_ERROR(LPUART1) != 0U) &&
        ((LL_LPUART_IsActiveFlag_ORE(LPUART1) != 0U) ||
         (LL_LPUART_IsActiveFlag_FE(LPUART1) != 0U) ||
@@ -603,6 +593,7 @@ void LPUART1_IRQHandler(void)
     }
 }
 
+/* RX DMA interrupt: complete packet received or transfer error occurred. */
 void DMA1_Channel5_IRQHandler(void)
 {
     if(LL_DMA_IsActiveFlag_TE5(DMA1) != 0U){
@@ -619,6 +610,7 @@ void DMA1_Channel5_IRQHandler(void)
     }
 }
 
+/* TX DMA interrupt: ACK frame sent or transfer error occurred. */
 void DMA1_Channel4_IRQHandler(void)
 {
     if(LL_DMA_IsActiveFlag_TE4(DMA1) != 0U){

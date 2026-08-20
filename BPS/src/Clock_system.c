@@ -7,6 +7,13 @@ void SystemClock_Init()
     LL_FLASH_EnableInstCache(); // 2. Remember code
     LL_FLASH_EnableDataCache(); // 3. Keep data clos
 
+    LL_RCC_HSI_Enable();
+
+    // Wait HSE oscillator is stable and ready to use
+    while (!LL_RCC_HSI_IsReady())
+    {
+    }
+
     LL_RCC_HSE_Enable();
 
     // Wait HSE oscillator is stable and ready to use

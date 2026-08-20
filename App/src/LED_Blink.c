@@ -3,7 +3,6 @@
 int main(){
   __enable_irq();
 
-  SystemClock_Init();
 	LED_PA5_Init();
   while(1){
 	  LL_GPIO_SetOutputPin(GPIOA ,LL_GPIO_PIN_5);

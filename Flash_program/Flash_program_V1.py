@@ -36,7 +36,7 @@ PACKET_SIZE = 1024
 ERASED_FLASH_BYTE = 0xFF
 DEFAULT_BAUDRATE = 115200
 DEFAULT_FIRMWARE_FILE = Path(__file__).with_name("App.bin")
-ACK_POLL_INTERVAL_SECONDS = 0.01
+ACK_POLL_INTERVAL_SECONDS = 0.05
 START_ACK_RETRIES = 6000
 PACKET_ACK_RETRIES = 1000
 FLASH_WRITE_ACK_RETRIES = 6000
@@ -254,9 +254,9 @@ def flash_firmware(
 
             wait_until_stm32_ready(
                 ser,
-                timeout_retries=START_ACK_RETRIES
-                if chunk_index == 0
-                else PACKET_ACK_RETRIES,
+                timeout_retries=(
+                    START_ACK_RETRIES if chunk_index == 0 else PACKET_ACK_RETRIES
+                ),
                 cancel_event=cancel_event,
                 log_callback=log_callback,
                 status_callback=status_callback,

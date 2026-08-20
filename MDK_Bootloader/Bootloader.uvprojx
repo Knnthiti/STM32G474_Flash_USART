@@ -540,9 +540,9 @@
               <FilePath>..\BPS\src\Clock_system.c</FilePath>
             </File>
             <File>
-              <FileName>USART_G474.c</FileName>
+              <FileName>USART.c</FileName>
               <FileType>1</FileType>
-              <FilePath>..\BPS\src\USART_G474.c</FilePath>
+              <FilePath>..\BPS\src\USART.c</FilePath>
             </File>
           </Files>
         </Group>
