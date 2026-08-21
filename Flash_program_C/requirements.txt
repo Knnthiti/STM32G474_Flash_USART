@@ -1,0 +1,11 @@
+# Tool requirements for building Flash_program_C.exe.
+# This is not a pip requirements file.
+#
+# Option 1: MSYS2 UCRT64
+base-devel
+mingw-w64-ucrt-x86_64-toolchain
+#
+# Option 2: Visual Studio Build Tools
+Desktop development with C++
+MSVC compiler
+Windows SDK

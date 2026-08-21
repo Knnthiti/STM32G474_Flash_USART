@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1180" height="760" viewBox="0 0 1180 760" role="img" aria-labelledby="title desc">
+  <title id="title">STM32G474 firmware update workflow</title>
+  <desc id="desc">Workflow showing PC flasher packet exchange with the STM32 bootloader over USART.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M2,2 L10,6 L2,10 Z" fill="#2f4858" />
+    </marker>
+    <style>
+      .bg { fill: #f7f9fb; }
+      .lane { fill: #ffffff; stroke: #c8d3dc; stroke-width: 2; }
+      .lane-title { font: 700 22px Segoe UI, Arial, sans-serif; fill: #1f2d3d; }
+      .box { fill: #e8f2ff; stroke: #2f80ed; stroke-width: 2; rx: 10; }
+      .stm { fill: #eaf8ef; stroke: #219653; }
+      .decision { fill: #fff7df; stroke: #d99a00; }
+      .end { fill: #f4eaff; stroke: #8f4ad8; }
+      .text { font: 600 17px Segoe UI, Arial, sans-serif; fill: #1f2d3d; }
+      .small { font: 14px Segoe UI, Arial, sans-serif; fill: #435466; }
+      .arrow { stroke: #2f4858; stroke-width: 2.4; fill: none; marker-end: url(#arrow); }
+      .note { fill: #fff; stroke: #d6dee6; stroke-width: 1.5; rx: 8; }
+    </style>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1180" height="760" />
+  <rect class="lane" x="40" y="40" width="500" height="640" rx="16" />
+  <rect class="lane" x="640" y="40" width="500" height="640" rx="16" />
+
+  <text class="lane-title" x="70" y="80">PC Flasher</text>
+  <text class="lane-title" x="670" y="80">STM32 Bootloader</text>
+
+  <rect class="box" x="95" y="115" width="350" height="70" />
+  <text class="text" x="125" y="145">Select COM port and App.bin</text>
+  <text class="small" x="125" y="168">Python GUI or Win32 C GUI</text>
+
+  <rect class="box" x="95" y="235" width="350" height="70" />
+  <text class="text" x="125" y="265">Send START 0x08</text>
+  <text class="small" x="125" y="288">Payload contains firmware size</text>
+
+  <rect class="stm" x="705" y="235" width="350" height="70" />
+  <text class="text" x="735" y="265">Erase application flash</text>
+  <text class="small" x="735" y="288">Then return READY 0x4A</text>
+
+  <rect class="box" x="95" y="355" width="350" height="70" />
+  <text class="text" x="125" y="385">Send DATA 0x68</text>
+  <text class="small" x="125" y="408">1016-byte payload + CRC</text>
+
+  <rect class="stm" x="705" y="355" width="350" height="70" />
+  <text class="text" x="735" y="385">Validate packet CRC</text>
+  <text class="small" x="735" y="408">Copy payload into RAM buffer</text>
+
+  <rect class="decision" x="705" y="475" width="350" height="80" />
+  <text class="text" x="735" y="506">RAM buffer full?</text>
+  <text class="small" x="735" y="530">READY 0x4A or PAUSE 0x6A</text>
+
+  <rect class="box" x="95" y="475" width="350" height="80" />
+  <text class="text" x="125" y="506">If PAUSE 0x6A</text>
+  <text class="small" x="125" y="530">Send WAIT 0x21 and wait READY 0x4A</text>
+
+  <rect class="stm" x="705" y="595" width="350" height="70" />
+  <text class="text" x="735" y="625">Write RAM buffer to flash</text>
+  <text class="small" x="735" y="648">Return READY 0x4A</text>
+
+  <rect class="end" x="95" y="595" width="350" height="70" />
+  <text class="text" x="125" y="625">No data remains</text>
+  <text class="small" x="125" y="648">Send FINISHED 0x9A, wait 0x56</text>
+
+  <line class="arrow" x1="270" y1="185" x2="270" y2="235" />
+  <line class="arrow" x1="445" y1="270" x2="705" y2="270" />
+  <line class="arrow" x1="705" y1="300" x2="445" y2="355" />
+  <line class="arrow" x1="270" y1="305" x2="270" y2="355" />
+  <line class="arrow" x1="445" y1="390" x2="705" y2="390" />
+  <line class="arrow" x1="880" y1="425" x2="880" y2="475" />
+  <line class="arrow" x1="705" y1="515" x2="445" y2="515" />
+  <line class="arrow" x1="445" y1="545" x2="705" y2="630" />
+  <line class="arrow" x1="705" y1="630" x2="445" y2="630" />
+  <line class="arrow" x1="270" y1="555" x2="270" y2="595" />
+
+  <rect class="note" x="405" y="700" width="370" height="42" />
+  <text class="small" x="425" y="725">Final data packet is padded with 0xFF before CRC.</text>
+</svg>

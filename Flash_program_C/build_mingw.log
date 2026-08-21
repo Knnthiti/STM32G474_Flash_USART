@@ -1,0 +1,23 @@
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:13: warning: ignoring '#pragma comment ' [-Wunknown-pragmas]
+   13 | #pragma comment(lib, "comctl32.lib")
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:14: warning: ignoring '#pragma comment ' [-Wunknown-pragmas]
+   14 | #pragma comment(lib, "comdlg32.lib")
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c: In function 'set_default_firmware_path':
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:350:47: warning: '\App.bin' directive output may be truncated writing 8 bytes into a region of size between 1 and 260 [-Wformat-truncation=]
+  350 |     snprintf(candidate, sizeof(candidate), "%s\\App.bin", module_path);
+      |                                               ^~~~~~~~~
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:350:5: note: 'snprintf' output between 9 and 268 bytes into a destination of size 260
+  350 |     snprintf(candidate, sizeof(candidate), "%s\\App.bin", module_path);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:358:47: warning: '\Flash_program\App.bin' directive output may be truncated writing 22 bytes into a region of size between 1 and 260 [-Wformat-truncation=]
+  358 |     snprintf(candidate, sizeof(candidate), "%s\\Flash_program\\App.bin", parent);
+      |                                               ^~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:358:5: note: 'snprintf' output between 23 and 282 bytes into a destination of size 260
+  358 |     snprintf(candidate, sizeof(candidate), "%s\\Flash_program\\App.bin", parent);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:365:47: warning: '\Flash_program\App.bin' directive output may be truncated writing 22 bytes into a region of size between 1 and 260 [-Wformat-truncation=]
+  365 |     snprintf(candidate, sizeof(candidate), "%s\\Flash_program\\App.bin", cwd);
+      |                                               ^~~~~~~~~~~~~~~~~~~~~~~~
+C:\Users\Knnn\Desktop\STM32G474_Flash_USART\Flash_program_C\Flash_program_C.c:365:5: note: 'snprintf' output between 23 and 282 bytes into a destination of size 260
+  365 |     snprintf(candidate, sizeof(candidate), "%s\\Flash_program\\App.bin", cwd);
+      |     ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
