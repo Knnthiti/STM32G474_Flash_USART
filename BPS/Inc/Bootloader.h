@@ -20,11 +20,12 @@ extern "C" {
 #define FLASH_START_APP1 0x08003000
 
 /* STM32G474 flash layout and packet sizing used by the firmware-update flow. */
-#define FLASH_PAGE_SIZE_BYTES          0x800U
-#define FLASH_BANK_PAGE_COUNT          128U
-#define FLASH_PAGE_COUNT               256U
-#define FLASH_APP_END_ADDRESS          0x08080000U
-#define BOOTLOADER_PACKET_DATA_WORDS   254U
+#define FLASH_DUAL_BANK_PAGE_SIZE_BYTES   0x800U
+#define FLASH_SINGLE_BANK_PAGE_SIZE_BYTES 0x1000U
+#define FLASH_DUAL_BANK_PAGE_COUNT        128U
+#define FLASH_APP_END_ADDRESS             0x08080000U
+#define FLASH_BUSY_TIMEOUT_ITERATIONS     17000000UL
+#define BOOTLOADER_PACKET_DATA_WORDS      254U
 
 /* Flash status bits that must be checked/cleared after erase or program. */
 #define FLASH_ERROR_FLAGS (FLASH_SR_FASTERR | FLASH_SR_MISERR  | FLASH_SR_PGSERR | \
@@ -123,8 +124,13 @@ void Flash_Unlock(void);
 void Flash_lock(void);
 uint8_t IsFlash_lock(void);
 
-uint8_t B1_Flash_erase_Page(uint8_t Page);
-uint8_t B1_Erase_All_App(void);
+uint8_t B1_Flash_erase_Page(uint16_t Page);
+uint8_t B1_Erase_App(uint32_t firmwareBytes);
+
+/* Flash erase diagnostics exposed for the debugger Watch window. */
+extern volatile uint16_t g_flashErasePage;
+extern volatile uint32_t g_flashLastStatus;
+extern volatile uint8_t g_flashWaitTimedOut;
 
 /* Small 32-byte scratch buffer used around flash program operations. */
 typedef struct{

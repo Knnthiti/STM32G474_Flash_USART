@@ -1,0 +1,5 @@
+# Local IDE settings
+/.vscode/
+
+# Python virtual environment for the flasher
+/Flash_program/.venv/

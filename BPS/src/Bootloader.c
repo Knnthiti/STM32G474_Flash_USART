@@ -103,6 +103,26 @@ uint8_t IsFlash_WaitForOperation(void){
 	return((FLASH->SR & FLASH_SR_BSY) ? 1 : 0);
 }
 
+volatile uint16_t g_flashErasePage = 0xFFFFU;
+volatile uint32_t g_flashLastStatus = 0U;
+volatile uint8_t g_flashWaitTimedOut = 0U;
+
+/* Prevent a failed Flash operation from trapping the bootloader forever. */
+static uint8_t Flash_WaitUntilReady(void)
+{
+	uint32_t timeout = FLASH_BUSY_TIMEOUT_ITERATIONS;
+
+	while(IsFlash_WaitForOperation()){
+		if(timeout-- == 0U){
+			g_flashWaitTimedOut = 1U;
+			g_flashLastStatus = FLASH->SR;
+			return 1U;
+		}
+	}
+
+	return 0U;
+}
+
 /* Clear end-of-operation and all tracked flash error flags. */
 void Clear_errorflags(void){
 	FLASH->SR = (FLASH_SR_EOP | FLASH_ERROR_FLAGS);
@@ -126,27 +146,42 @@ uint8_t IsFlash_lock(void){
 
 
 /* Erase one flash page, selecting bank 1 or bank 2 from the absolute page number. */
-uint8_t B1_Flash_erase_Page(uint8_t Page){
+uint8_t B1_Flash_erase_Page(uint16_t Page){
 	uint32_t pageInBank = Page;
+	uint8_t dualBank = ((FLASH->OPTR & FLASH_OPTR_DBANK) != 0U) ? 1U : 0U;
 	
-	while(IsFlash_WaitForOperation()) {
+	g_flashErasePage = Page;
+	g_flashLastStatus = 0U;
+	g_flashWaitTimedOut = 0U;
+
+	if(Flash_WaitUntilReady() != 0U){
+		return 1U;
 	}
 	
 	//2.Unlock Flash
 	if(IsFlash_lock()){
         Flash_Unlock();
     }
+	if(IsFlash_lock()){
+		g_flashLastStatus = FLASH->CR;
+		return 1U;
+	}
 	
 	//1.Clear all the error flags
 	Clear_errorflags();
 	
-	FLASH->CR &= ~FLASH_CR_EOPIE_Msk;
+	FLASH->CR &= ~(FLASH_CR_EOPIE_Msk | FLASH_CR_PG | FLASH_CR_MER1 | FLASH_CR_MER2);
 	
-	if(Page >= FLASH_BANK_PAGE_COUNT){
-		pageInBank = (uint32_t)Page - FLASH_BANK_PAGE_COUNT;
+	if((dualBank != 0U) && (Page >= FLASH_DUAL_BANK_PAGE_COUNT)){
+		pageInBank = (uint32_t)Page - FLASH_DUAL_BANK_PAGE_COUNT;
 		FLASH->CR |= FLASH_CR_BKER;
 	}else{
 		FLASH->CR &= ~FLASH_CR_BKER_Msk;
+	}
+
+	if(pageInBank >= FLASH_DUAL_BANK_PAGE_COUNT){
+		g_flashLastStatus = FLASH_SR_SIZERR;
+		return 1U;
 	}
 	
 	//Set PER for choose erase Page mode.
@@ -161,13 +196,15 @@ uint8_t B1_Flash_erase_Page(uint8_t Page){
 	FLASH->CR |= FLASH_CR_STRT;
 	
 	//Wait to finish erase
-	while(IsFlash_WaitForOperation()) {
+	if(Flash_WaitUntilReady() != 0U){
+		return 1U;
 	}
 	
 	//clear CR->SER for Out erase sector mode.
 	FLASH->CR &= ~(FLASH_CR_PER_Msk | FLASH_CR_PNB_Msk | FLASH_CR_BKER_Msk);
 	
 	if((FLASH->SR & FLASH_ERROR_FLAGS) != 0U){
+		g_flashLastStatus = FLASH->SR;
 		Clear_errorflags();
 		return 1;
 	}
@@ -177,22 +214,49 @@ uint8_t B1_Flash_erase_Page(uint8_t Page){
 	return 0;
 }
 
-/* Erase the complete application flash area before receiving a new image. */
-uint8_t B1_Erase_All_App(void){
-	uint16_t startPage = (uint16_t)((FLASH_START_APP1 - FLASH_BASE) / FLASH_PAGE_SIZE_BYTES);
-	uint32_t eraseBytes = FLASH_APP_END_ADDRESS - FLASH_START_APP1;
+/* Erase only the pages required by the incoming application image. */
+uint8_t B1_Erase_App(uint32_t firmwareBytes){
+	uint32_t pageSize;
+	uint32_t appCapacity = FLASH_APP_END_ADDRESS - FLASH_START_APP1;
+	uint32_t packetBytes = BOOTLOADER_PACKET_DATA_WORDS * sizeof(uint32_t);
+	uint32_t programBytes;
+	uint16_t totalPages;
+	uint16_t startPage;
 	uint16_t erasePages;
 	uint16_t endPage;
-	
-	erasePages = (uint16_t)((eraseBytes + FLASH_PAGE_SIZE_BYTES - 1U) / FLASH_PAGE_SIZE_BYTES);
+
+	if((firmwareBytes == 0U) || (firmwareBytes > appCapacity)){
+		g_flashLastStatus = FLASH_SR_SIZERR;
+		return 1U;
+	}
+
+	/* The final packet is padded and all 1016 payload bytes are programmed. */
+	programBytes = ((firmwareBytes + packetBytes - 1U) / packetBytes) * packetBytes;
+	if(programBytes > appCapacity){
+		g_flashLastStatus = FLASH_SR_SIZERR;
+		return 1U;
+	}
+
+	pageSize = ((FLASH->OPTR & FLASH_OPTR_DBANK) != 0U) ?
+	           FLASH_DUAL_BANK_PAGE_SIZE_BYTES : FLASH_SINGLE_BANK_PAGE_SIZE_BYTES;
+
+	if(((FLASH_START_APP1 - FLASH_BASE) % pageSize) != 0U){
+		g_flashLastStatus = FLASH_SR_PGAERR;
+		return 1U;
+	}
+
+	totalPages = (uint16_t)((FLASH_APP_END_ADDRESS - FLASH_BASE) / pageSize);
+	startPage = (uint16_t)((FLASH_START_APP1 - FLASH_BASE) / pageSize);
+	erasePages = (uint16_t)((programBytes + pageSize - 1U) / pageSize);
 	endPage = startPage + erasePages;
 	
-	if(endPage > FLASH_PAGE_COUNT){
-		endPage = FLASH_PAGE_COUNT;
+	if(endPage > totalPages){
+		g_flashLastStatus = FLASH_SR_SIZERR;
+		return 1U;
 	}
 	
 	for(uint16_t i = startPage ; i < endPage ; i++){
-		if(B1_Flash_erase_Page((uint8_t)i) != 0U){
+		if(B1_Flash_erase_Page(i) != 0U){
 			return 1;
 		}
 	}
@@ -222,13 +286,20 @@ uint8_t B1_Flash_Write(uint32_t u32FlashAddress, uint32_t *u32Data32B, uint16_t 
 		return 1;
 	}
 	
-	while(IsFlash_WaitForOperation()) {
+	g_flashLastStatus = 0U;
+	g_flashWaitTimedOut = 0U;
+	if(Flash_WaitUntilReady() != 0U){
+		return 1U;
 	}
 	
 	//2.Unlock Flash
 	if(IsFlash_lock()){
         Flash_Unlock();
-    }		
+    }
+	if(IsFlash_lock()){
+		g_flashLastStatus = FLASH->CR;
+		return 1U;
+	}
 	
 	//1.Clear all the error flags
 	Clear_errorflags();
@@ -250,13 +321,15 @@ uint8_t B1_Flash_Write(uint32_t u32FlashAddress, uint32_t *u32Data32B, uint16_t 
 		__ISB();// Using instruction barier to make sure that be write a flash with the correct order.
 		*(__IO uint32_t *)(writeAddress + 4U) = word1;
 		
-		while(IsFlash_WaitForOperation()) {
+		if(Flash_WaitUntilReady() != 0U){
+			return 1U;
 		}
 		
 		//clear CR->PG for Out Write mode.
 		FLASH->CR &= ~FLASH_CR_PG_Msk;
 		
 		if((FLASH->SR & FLASH_ERROR_FLAGS) != 0U){
+			g_flashLastStatus = FLASH->SR;
 			Clear_errorflags();
 			return 1;
 		}
@@ -287,13 +360,14 @@ volatile G4_State_t g4_currentState = G4_STATE_INIT_RX;
 /* Reset the whole staging buffer to the erased-flash value. */
 void Bootloader_ClearProgramBuffer(void)
 {
-	memset(u32BufferProgram, 0xFFFFFFFF, size_u32BufferProgram);
+	memset(u32BufferProgram, 0xFF, sizeof(u32BufferProgram));
 }
 
 /* Build a 1024-byte ACK frame header for the PC-side flasher. */
 void Bootloader_PrepareAck(STM_ACK_t ack)
 {
-    TX_USART_Data = (_USARTData){ 0 };
+    /* Clear in place: a 1024-byte temporary would exceed the stack budget. */
+    memset((void *)&TX_USART_Data, 0, sizeof(TX_USART_Data));
     TX_USART_Data.u8setting1Byte.u8herder = (uint8_t)ack;
     TX_USART_Data.u8setting1Byte.u8version = Version_Edit;
     TX_USART_Data.u8setting1Byte.u16size = size_u8USARTdata;
@@ -333,11 +407,15 @@ void PocessCommand_G4(void)
     // Process command based on the received header
     switch (RX_USART_Data.u8setting1Byte.u8herder)
     {
-        case PC_CMD_START_PRI: // 0x08
+        case PC_CMD_START_PRI: { // 0x08
             /* Start a new firmware update: erase app area and reset write offsets. */
-			
+			uint32_t firmwareBytes;
+
+			memcpy(&firmwareBytes,
+			       (const void *)&RX_USART_Data.u8Data[sizeof(uint32_t)],
+			       sizeof(firmwareBytes));
             __disable_irq();
-            status = B1_Erase_All_App(); // Erase application flash area
+            status = B1_Erase_App(firmwareBytes); // Erase only pages used by this image.
             __enable_irq(); 
             
             current_program = 0;
@@ -350,6 +428,7 @@ void PocessCommand_G4(void)
                 Send_Data_LPUART1_DMA((uint32_t*)TX_USART_Data.u32Data, size_u8USARTdata);
             }
             break;
+        }
 
         case PC_CMD_SENDING_PRI: // 0x68
             /* Let the PC continue until the RAM staging buffer is full. */
@@ -472,8 +551,9 @@ void UART_ProcessState_G4(void)
         /* --- STATE: Initialize RX DMA --- */
         case G4_STATE_INIT_RX:
             // Command DMA to wait for incoming data
-            RX_USART_Data = (_USARTData){ 0 };
-            TX_USART_Data = (_USARTData){ 0 };
+            /* Clear in place rather than creating two packet-sized temporaries. */
+            memset((void *)&RX_USART_Data, 0, sizeof(RX_USART_Data));
+            memset((void *)&TX_USART_Data, 0, sizeof(TX_USART_Data));
             Receive_Data_LPUART1_DMA((uint32_t*)RX_USART_Data.u8Data, size_u8USARTdata);
             timeoutStart = GetTick();
             g4_currentState = G4_STATE_WAIT_RX;
@@ -503,10 +583,11 @@ void UART_ProcessState_G4(void)
             
             // 2. If CRC is correct and it is a SENDING command, copy data to buffer
             if(RX_USART_Data.u8setting1Byte.u8herder == PC_CMD_SENDING_PRI){
-                if((current_program + BOOTLOADER_PACKET_DATA_WORDS) <= size_u32BufferProgram){
-                    for(uint16_t i = 0 ; i < BOOTLOADER_PACKET_DATA_WORDS ; i++){
-                        u32BufferProgram[current_program + i] = RX_USART_Data.u32Data[ 1 + i ];
-                    } 
+                if(current_program <= (size_u32BufferProgram - BOOTLOADER_PACKET_DATA_WORDS)){
+                    /* RX DMA is complete in this state, so the payload is stable. */
+                    memcpy(&u32BufferProgram[current_program],
+                           (const void *)&RX_USART_Data.u8Data[sizeof(uint32_t)],
+                           BOOTLOADER_PACKET_DATA_WORDS * sizeof(uint32_t));
                     current_program += BOOTLOADER_PACKET_DATA_WORDS;
                 } 
             }

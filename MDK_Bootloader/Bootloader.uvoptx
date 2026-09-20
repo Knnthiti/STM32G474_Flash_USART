@@ -135,7 +135,7 @@
         <SetRegEntry>
           <Number>0</Number>
           <Key>ST-LINKIII-KEIL_SWO</Key>
-          <Name>-U -O206 -SF10000 -C0 -A0 -I0 -HNlocalhost -HP7184 -P1 -N00("ARM CoreSight SW-DP (ARM Core") -D00(2BA01477) -L00(0) -TO131090 -TC10000000 -TT10000000 -TP21 -TDS8007 -TDT0 -TDC1F -TIEFFFFFFFF -TIP8 -FO7 -FD20000000 -FC8000 -FN1 -FF0STM32G47x-8x_512.FLM -FS08000000 -FL080000 -FP0($$Device:STM32G474RETx$CMSIS\Flash\STM32G47x-8x_512.FLM) -WA0 -WE0 -WVCE4 -WS2710 -WM0 -WP2 -WK0-R0</Name>
+          <Name>-U-O206 -O206 -SF10000 -C0 -A0 -I0 -HNlocalhost -HP7184 -P1 -N00("ARM CoreSight SW-DP (ARM Core") -D00(2BA01477) -L00(0) -TO131090 -TC10000000 -TT10000000 -TP21 -TDS8007 -TDT0 -TDC1F -TIEFFFFFFFF -TIP8 -FO7 -FD20000000 -FC8000 -FN1 -FF0STM32G47x-8x_512.FLM -FS08000000 -FL080000 -FP0($$Device:STM32G474RETx$CMSIS\Flash\STM32G47x-8x_512.FLM) -WA0 -WE0 -WVCE4 -WS2710 -WM0 -WP2 -WK0-R0</Name>
         </SetRegEntry>
         <SetRegEntry>
           <Number>0</Number>
@@ -152,9 +152,9 @@
         <Bp>
           <Number>0</Number>
           <Type>0</Type>
-          <LineNumber>338</LineNumber>
+          <LineNumber>333</LineNumber>
           <EnabledFlag>0</EnabledFlag>
-          <Address>134226800</Address>
+          <Address>134219988</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -163,14 +163,14 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\BPS\src\Bootloader.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\Bootloader\../BPS/src/Bootloader.c\338</Expression>
+          <Expression>\\\../BPS/src/Bootloader.c\333</Expression>
         </Bp>
         <Bp>
           <Number>1</Number>
           <Type>0</Type>
-          <LineNumber>333</LineNumber>
+          <LineNumber>338</LineNumber>
           <EnabledFlag>0</EnabledFlag>
-          <Address>134226780</Address>
+          <Address>134220010</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -179,14 +179,14 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\BPS\src\Bootloader.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\Bootloader\../BPS/src/Bootloader.c\333</Expression>
+          <Expression>\\\../BPS/src/Bootloader.c\338</Expression>
         </Bp>
         <Bp>
           <Number>2</Number>
           <Type>0</Type>
-          <LineNumber>582</LineNumber>
+          <LineNumber>585</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134220626</Address>
+          <Address>134228642</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
@@ -195,55 +195,23 @@
           <BreakIfRCount>1</BreakIfRCount>
           <Filename>..\BPS\src\Bootloader.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\Bootloader\../BPS/src/Bootloader.c\582</Expression>
+          <Expression>\\Bootloader\../BPS/src/Bootloader.c\585</Expression>
         </Bp>
         <Bp>
           <Number>3</Number>
           <Type>0</Type>
           <LineNumber>552</LineNumber>
           <EnabledFlag>1</EnabledFlag>
-          <Address>134226050</Address>
+          <Address>0</Address>
           <ByteObject>0</ByteObject>
           <HtxType>0</HtxType>
           <ManyObjects>0</ManyObjects>
           <SizeOfObject>0</SizeOfObject>
           <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
+          <BreakIfRCount>0</BreakIfRCount>
           <Filename>..\BPS\src\Bootloader.c</Filename>
           <ExecCommand></ExecCommand>
-          <Expression>\\Bootloader\../BPS/src/Bootloader.c\552</Expression>
-        </Bp>
-        <Bp>
-          <Number>4</Number>
-          <Type>0</Type>
-          <LineNumber>464</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>134228020</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>..\BPS\src\Bootloader.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\Bootloader\../BPS/src/Bootloader.c\464</Expression>
-        </Bp>
-        <Bp>
-          <Number>5</Number>
-          <Type>0</Type>
-          <LineNumber>456</LineNumber>
-          <EnabledFlag>1</EnabledFlag>
-          <Address>134227982</Address>
-          <ByteObject>0</ByteObject>
-          <HtxType>0</HtxType>
-          <ManyObjects>0</ManyObjects>
-          <SizeOfObject>0</SizeOfObject>
-          <BreakByAccess>0</BreakByAccess>
-          <BreakIfRCount>1</BreakIfRCount>
-          <Filename>..\BPS\src\Bootloader.c</Filename>
-          <ExecCommand></ExecCommand>
-          <Expression>\\Bootloader\../BPS/src/Bootloader.c\456</Expression>
+          <Expression></Expression>
         </Bp>
       </Breakpoint>
       <WatchWindow1>
