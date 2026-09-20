@@ -3,3 +3,5 @@
 
 # Python virtual environment for the flasher
 /Flash_program/.venv/
+
+/Flash_program/__pycache__/
