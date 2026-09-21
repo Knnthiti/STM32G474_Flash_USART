@@ -2095,11 +2095,11 @@ Image Symbol Table
 
 Memory Map of the image
 
-  Image Entry point : 0x080002a5
+  Image Entry point : 0x080001d9
 
-  Load Region LR_1 (Base: 0x08000000, Size: 0x00002fc0, Max: 0xffffffff, ABSOLUTE)
+  Load Region LR_IROM1 (Base: 0x08000000, Size: 0x00002fc8, Max: 0x00003000, ABSOLUTE)
 
-    Execution Region ER_RO (Exec base: 0x08000000, Load base: 0x08000000, Size: 0x00002fb4, Max: 0xffffffff, ABSOLUTE)
+    Execution Region ER_IROM1 (Exec base: 0x08000000, Load base: 0x08000000, Size: 0x00002fb4, Max: 0x00003000, ABSOLUTE)
 
     Exec Addr    Load Addr    Size         Type   Attr      Idx    E Section Name        Object
 
@@ -2154,7 +2154,7 @@ Memory Map of the image
     0x08000298   0x08000298   0x00000004   Code   RO          829    .ARM.Collect$$rtexit$$00000003  c_w.l(rtexit2.o)
     0x0800029c   0x0800029c   0x00000006   Code   RO          830    .ARM.Collect$$rtexit$$00000004  c_w.l(rtexit2.o)
     0x080002a2   0x080002a2   0x00000002   PAD
-    0x080002a4   0x080002a4   0x00000040   Code   RO           18  * .text               startup_stm32g474xx.o
+    0x080002a4   0x080002a4   0x00000040   Code   RO           18    .text               startup_stm32g474xx.o
     0x080002e4   0x080002e4   0x000000f0   Code   RO          713    .text               c_w.l(lludivv7m.o)
     0x080003d4   0x080003d4   0x0000008a   Code   RO          715    .text               c_w.l(rt_memcpy_v6.o)
     0x0800045e   0x0800045e   0x00000010   Code   RO          717    .text               c_w.l(aeabi_memset4.o)
@@ -2408,19 +2408,14 @@ Memory Map of the image
     0x08002f94   0x08002f94   0x00000020   Data   RO          901    Region$$Table       anon$$obj.o
 
 
-    Execution Region ER_RW (Exec base: 0x20000000, Load base: 0x08002fb4, Size: 0x0000000c, Max: 0xffffffff, ABSOLUTE)
+    Execution Region RW_IRAM1 (Exec base: 0x20000000, Load base: 0x08002fb8, Size: 0x00001ea0, Max: 0x00020000, ABSOLUTE)
 
     Exec Addr    Load Addr    Size         Type   Attr      Idx    E Section Name        Object
 
-    0x20000000   0x08002fb4   0x00000004   Data   RW          519    .data.Received_CRC  bootloader.o
-    0x20000004   0x08002fb8   0x00000004   Data   RW            6    .data.SystemCoreClock  system_stm32g4xx.o
-    0x20000008   0x08002fbc   0x00000002   Data   RW          521    .data.g_flashErasePage  bootloader.o
-
-
-    Execution Region ER_ZI (Exec base: 0x20000010, Load base: 0x08002fc0, Size: 0x00001e90, Max: 0xffffffff, ABSOLUTE)
-
-    Exec Addr    Load Addr    Size         Type   Attr      Idx    E Section Name        Object
-
+    0x20000000   0x08002fb8   0x00000004   Data   RW          519    .data.Received_CRC  bootloader.o
+    0x20000004   0x08002fbc   0x00000004   Data   RW            6    .data.SystemCoreClock  system_stm32g4xx.o
+    0x20000008   0x08002fc0   0x00000002   Data   RW          521    .data.g_flashErasePage  bootloader.o
+    0x2000000a   0x08002fc2   0x00000006   PAD
     0x20000010        -       0x00000060   Zero   RW          766    .bss                c_w.l(libspace.o)
     0x20000070        -       0x00000004   Zero   RW          517    .bss.My_CRC         bootloader.o
     0x20000074        -       0x00000004   Zero   RW          518    .bss.My_CRC_SW      bootloader.o
@@ -2428,17 +2423,17 @@ Memory Map of the image
     0x2000007c        -       0x00000400   Zero   RW          520    .bss.RX_USART_Data  bootloader.o
     0x2000047c        -       0x00000400   Zero   RW          532    .bss.TX_USART_Data  bootloader.o
     0x2000087c        -       0x00000001   Zero   RW          533    .bss.Version_Program  bootloader.o
-    0x2000087d   0x08002fc0   0x00000003   PAD
+    0x2000087d   0x08002fc2   0x00000003   PAD
     0x20000880        -       0x00000020   Zero   RW          524    .bss._32byteBufferFlash  bootloader.o
     0x200008a0        -       0x00000004   Zero   RW          516    .bss.bootJumpToApp1.vJumpToApp  bootloader.o
     0x200008a4        -       0x00000002   Zero   RW          527    .bss.current_program  bootloader.o
     0x200008a6        -       0x00000001   Zero   RW          531    .bss.g4_currentState  bootloader.o
-    0x200008a7   0x08002fc0   0x00000001   PAD
+    0x200008a7   0x08002fc2   0x00000001   PAD
     0x200008a8        -       0x00000002   Zero   RW          529    .bss.g4_rxIndex     bootloader.o
     0x200008aa        -       0x00000002   Zero   RW          530    .bss.g4_txIndex     bootloader.o
     0x200008ac        -       0x00000004   Zero   RW          522    .bss.g_flashLastStatus  bootloader.o
     0x200008b0        -       0x00000001   Zero   RW          523    .bss.g_flashWaitTimedOut  bootloader.o
-    0x200008b1   0x08002fc0   0x00000003   PAD
+    0x200008b1   0x08002fc2   0x00000003   PAD
     0x200008b4        -       0x00000004   Zero   RW          528    .bss.timeoutStart   bootloader.o
     0x200008b8        -       0x00000fe0   Zero   RW          525    .bss.u32BufferProgram  bootloader.o
     0x20001898        -       0x00000004   Zero   RW          526    .bss.u32offset_FlashAddress  bootloader.o
@@ -2466,9 +2461,9 @@ Image component sizes
       1930          0          8          0          0      14547   usart.o
 
     ----------------------------------------------------------------------
-     10650         38        568         12       7728      74582   Object Totals
+     10650         38        568         12       7732      74582   Object Totals
          0          0         32          0          0          0   (incl. Generated)
-       136          0          0          2          7          0   (incl. Padding)
+       136          0          0          2         11          0   (incl. Padding)
 
     ----------------------------------------------------------------------
 
@@ -2523,14 +2518,14 @@ Image component sizes
 
       Code (inc. data)   RO Data    RW Data    ZI Data      Debug   
 
-     11644         54        568         12       7824      75186   Grand Totals
-     11644         54        568         12       7824      75186   ELF Image Totals
+     11644         54        568         12       7828      75186   Grand Totals
+     11644         54        568         12       7828      75186   ELF Image Totals
      11644         54        568         12          0          0   ROM Totals
 
 ==============================================================================
 
     Total RO  Size (Code + RO Data)                12212 (  11.93kB)
-    Total RW  Size (RW Data + ZI Data)              7836 (   7.65kB)
+    Total RW  Size (RW Data + ZI Data)              7840 (   7.66kB)
     Total ROM Size (Code + RO Data + RW Data)      12224 (  11.94kB)
 
 ==============================================================================
